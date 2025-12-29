@@ -4,6 +4,10 @@ from src.constants import *
 from src.entities import Spaceship, Fleet
 
 def run_game() -> None:
+    """
+    Initializes Pygame, sets up the game state, and runs the main game loop.
+    Handles events, updates game logic, and renders the scene.
+    """
     pygame.init()
     
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))

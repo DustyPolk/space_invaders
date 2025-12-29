@@ -1,38 +1,52 @@
 import pygame
 import random
+from dataclasses import dataclass, field
 import src.sprites as sprites
 from src.constants import *
 
+@dataclass
 class Spaceship:
-    def __init__(self, name: str, health: int, x: int, y: int) -> None:
-        self.name = name
-        self.health = health
-        self.x = x
-        self.y = y
-        # spawn position for respawn
-        self.spawn_x = x
-        self.spawn_y = y
-        # lives and death state
-        self.lives = 3
-        self.dead = False
-        # temporary invulnerability after respawn (ms)
-        self.invulnerable = False
-        self.invulnerable_start = 0
-        self.invulnerable_duration = 2000
-        # limit simultaneous player bullets
-        self.max_bullets = 3
-        
-        # Ship dimensions (used for math and drawing)
-        self.width = 50
-        self.height = 30
-        
-        # Bullet settings
-        self.bullets = []  # List to hold bullet rectangles
-        self.bullet_speed = 7
-        self.last_shot_time = 0
-        self.shoot_delay = 500  # Milliseconds between shots (increase to shoot slower)
+    """
+    Represents the player's spaceship.
+    
+    Attributes:
+        name (str): The name of the ship.
+        health (int): Current health points.
+        x (int): Current x-coordinate.
+        y (int): Current y-coordinate.
+        lives (int): Remaining lives.
+    """
+    name: str
+    health: int
+    x: int
+    y: int
+    
+    # Defaults / Internal state
+    lives: int = 3
+    dead: bool = False
+    invulnerable: bool = False
+    invulnerable_start: int = 0
+    invulnerable_duration: int = 2000
+    max_bullets: int = 3
+    width: int = 50
+    height: int = 30
+    bullet_speed: int = 7
+    last_shot_time: int = 0
+    shoot_delay: int = 500
+    
+    # Mutable defaults need field(default_factory=...)
+    bullets: list = field(default_factory=list)
+    spawn_x: int = field(init=False)
+    spawn_y: int = field(init=False)
+
+    def __post_init__(self):
+        self.spawn_x = self.x
+        self.spawn_y = self.y
 
     def take_damage(self, amount: int) -> None:
+        """
+        Reduces health by the given amount. Handles life loss and respawning logic.
+        """
         if self.invulnerable or self.dead:
             return
 
@@ -54,9 +68,13 @@ class Spaceship:
                 self.dead = True
 
     def is_alive(self) -> bool:
+        """Returns True if the ship has health > 0."""
         return self.health > 0
     
     def shoot(self):
+        """
+        Fires a bullet if the cooldown has passed and max bullets limit isn't reached.
+        """
         # Check current time
         current_time = pygame.time.get_ticks()
         
@@ -75,6 +93,10 @@ class Spaceship:
             self.last_shot_time = current_time
 
     def move(self) -> None:
+        """
+        Updates the ship's position based on keyboard input (Left/Right arrows).
+        Also updates the position of active bullets.
+        """
         # Update ship position based on input
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
@@ -91,6 +113,9 @@ class Spaceship:
                 self.bullets.remove(bullet)
     
     def draw_ship(self, screen: pygame.Surface) -> None:
+        """
+        Draws the ship to the screen. Handles blinking effect when invulnerable.
+        """
         # Draw the ship (with invulnerability blink)
         now = pygame.time.get_ticks()
         draw = True
@@ -110,15 +135,26 @@ class Spaceship:
             pygame.draw.rect(screen, (255, 255, 0), bullet)
     
 
+@dataclass
 class Enemy:
-    def __init__(self, x: int, y: int, w: int, h: int, row: int, col: int) -> None:
-        self.rect = pygame.Rect(x, y, w, h)
-        self.row = row
-        self.col = col
-        self.alive = True
-        self.frame = 0
+    """
+    Represents a single alien enemy.
+    """
+    x: int
+    y: int
+    w: int
+    h: int
+    row: int
+    col: int
+    alive: bool = True
+    frame: int = 0
+    rect: pygame.Rect = field(init=False)
+
+    def __post_init__(self):
+        self.rect = pygame.Rect(self.x, self.y, self.w, self.h)
 
     def draw(self, screen: pygame.Surface) -> None:
+        """Draws the enemy sprite using the current animation frame."""
         if not self.alive:
             return
         
@@ -130,38 +166,51 @@ class Enemy:
         sprites.draw_pixel_sprite(screen, pattern, self.rect.x, self.rect.y, self.rect.width, self.rect.height, color)
 
     def hit(self) -> None:
+        """Marks the enemy as dead."""
         self.alive = False
 
 
+@dataclass
 class Fleet:
-    def __init__(self, cols: int, rows: int, enemy_w: int, enemy_h: int, h_spacing: int, v_spacing: int, start_x: int, start_y: int, screen_width: int) -> None:
-        self.cols = cols
-        self.rows = rows
-        self.enemy_w = enemy_w
-        self.enemy_h = enemy_h
-        self.h_spacing = h_spacing
-        self.v_spacing = v_spacing
-        self.screen_width = screen_width
+    """
+    Manages the grid of enemies, their movement, and coordinated firing.
+    """
+    cols: int
+    rows: int
+    enemy_w: int
+    enemy_h: int
+    h_spacing: int
+    v_spacing: int
+    start_x: int
+    start_y: int
+    screen_width: int
+    
+    direction: int = 1
+    step_distance: int = 16
+    drop_amount: int = 32
+    step_interval: int = 600
+    last_step: int = field(default_factory=pygame.time.get_ticks)
+    enemies: list = field(init=False)
 
+    def __post_init__(self):
         self.enemies = []  # 2D list [row][col]
-        for r in range(rows):
+        for r in range(self.rows):
             row_list = []
-            for c in range(cols):
-                x = start_x + c * (enemy_w + h_spacing)
-                y = start_y + r * (enemy_h + v_spacing)
-                row_list.append(Enemy(x, y, enemy_w, enemy_h, r, c))
+            for c in range(self.cols):
+                x = self.start_x + c * (self.enemy_w + self.h_spacing)
+                y = self.start_y + r * (self.enemy_h + self.v_spacing)
+                row_list.append(Enemy(x, y, self.enemy_w, self.enemy_h, r, c))
             self.enemies.append(row_list)
-
-        self.direction = 1  # 1 = right, -1 = left
-        self.step_distance = 16
-        self.drop_amount = 32
-        self.step_interval = 600  # milliseconds between fleet steps
+        
+        # Override last_step to ensure it's current if get_ticks was called early
         self.last_step = pygame.time.get_ticks()
 
     def all_enemies(self):
+        """Returns a flat list of all enemies in the fleet."""
         return [e for row in self.enemies for e in row]
 
     def bounding_rect(self):
+        """Calculates the bounding rectangle enclosing all living enemies."""
         alive_rects = [e.rect for e in self.all_enemies() if e.alive]
         if not alive_rects:
             return None
@@ -171,6 +220,10 @@ class Fleet:
         return br
 
     def update(self) -> None:
+        """
+        Updates the fleet's position. Handles side collision detection
+        to reverse direction and drop down.
+        """
         now = pygame.time.get_ticks()
         if now - self.last_step < self.step_interval:
             return
@@ -202,10 +255,12 @@ class Fleet:
                 e.frame ^= 1
 
     def draw(self, screen: pygame.Surface) -> None:
+        """Draws all alive enemies in the fleet."""
         for e in self.all_enemies():
             e.draw(screen)
 
     def pick_shooter(self):
+        """Selects a random enemy from the bottom row of any column to shoot."""
         # collect the bottom-most alive enemy in each column
         candidates = []
         for c in range(self.cols):
@@ -219,6 +274,7 @@ class Fleet:
         return random.choice(candidates)
 
     def hit_enemy(self, rect: pygame.Rect):
+        """Checks if any enemy is hit by the given rectangle (bullet)."""
         for e in self.all_enemies():
             if e.alive and e.rect.colliderect(rect):
                 e.hit()

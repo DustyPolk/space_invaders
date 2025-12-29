@@ -1,5 +1,9 @@
 import pygame
 
+"""
+Module containing pixel art data and sprite drawing utilities.
+"""
+
 # 1 = draw, 0 = skip
 # 11x8 grid example
 ALIEN_A_1 = [

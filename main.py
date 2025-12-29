@@ -1,3 +1,6 @@
+"""
+Entry point for the Space Invaders game.
+"""
 from src.game import run_game
 
 if __name__ == "__main__":
